@@ -1,6 +1,10 @@
 import Foundation
 import Capacitor
 
+extension Notification.Name {
+    static let capMessageBusPublish = Notification.Name("capMessageBusPublish")
+}
+
 @objc(MessageBusPlugin)
 public class MessageBusPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "MessageBusPlugin"
@@ -12,9 +16,10 @@ public class MessageBusPlugin: CAPPlugin, CAPBridgedPlugin {
     private var globalSub: MessageBus.Subscription?
 
     public override func load() {
+        super.load()
+
         // Forward every native publish to JS
         globalSub = MessageBus.shared.subscribeAll { [weak self] type, payload in
-            // ensure UI/main thread for notifyListeners
             DispatchQueue.main.async {
                 self?.notifyListeners("message", data: [
                     "type": type,
@@ -22,11 +27,30 @@ public class MessageBusPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             }
         }
+
+        // NEW: listen for app-level posts and inject into the bus
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleExternalPublish(_:)),
+            name: .capMessageBusPublish,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleExternalPublish(_ note: Notification) {
+        let userInfo = note.userInfo as? [String: Any]
+        let type = userInfo?["type"] as? String ?? "unknown"
+        let payload = userInfo?["payload"]
+        MessageBus.shared.publish(type: type, payload: payload)
     }
 
     @objc func sendMessage(_ call: CAPPluginCall) {
         let type = call.getString("type") ?? "unknown"
-        let payload = call.getObject("payload") // [String: Any]?, JSON-friendly
+        let payload = call.getObject("payload")
         MessageBus.shared.publish(type: type, payload: payload)
         call.resolve(["ok": true])
     }

@@ -33,19 +33,35 @@ final class MessageBus {
     @discardableResult
     func subscribeAll(_ handler: @escaping GlobalHandler) -> Subscription {
         let token = UUID()
-        queue.sync { globalHandlers[token] = handler }
-        return Subscription { [weak self] in self?.removeGlobal(token: token) }
+        queue.sync {
+            globalHandlers[token] = handler
+        }
+        return Subscription { [weak self] in
+            self?.removeGlobal(token: token)
+        }
     }
 
     func publish(type: String, payload: Payload) {
         var callbacks: [Handler] = []
         var globals: [GlobalHandler] = []
+
+        // Safely capture snapshots under lock
         queue.sync {
-            callbacks = Array(handlers[type]?.values ?? [])
+            if let map = handlers[type] {
+                callbacks = Array(map.values)
+            } else {
+                callbacks = [] // explicit, keeps the type [Handler]
+            }
             globals = Array(globalHandlers.values)
         }
-        callbacks.forEach { $0(payload) }
-        globals.forEach { $0(type, payload) }
+
+        // Invoke outside the lock
+        for cb in callbacks {
+            cb(payload)
+        }
+        for g in globals {
+            g(type, payload)
+        }
     }
 
     private func remove(type: String, token: UUID) {

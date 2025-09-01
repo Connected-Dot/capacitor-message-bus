@@ -9,21 +9,25 @@ public class MessageBusPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "sendMessage", returnType: CAPPluginReturnPromise)
     ]
 
+    private var globalSub: MessageBus.Subscription?
+
     public override func load() {
-        // Example: forward all "done" messages to JS
-        _ = MessageBus.shared.subscribe(type: "done") { [weak self] payload in
-            self?.notifyListeners("message", data: [
-                "type": "done",
-                "payload": payload ?? NSNull()
-            ])
+        // Forward every native publish to JS
+        globalSub = MessageBus.shared.subscribeAll { [weak self] type, payload in
+            // ensure UI/main thread for notifyListeners
+            DispatchQueue.main.async {
+                self?.notifyListeners("message", data: [
+                    "type": type,
+                    "payload": payload ?? NSNull()
+                ])
+            }
         }
     }
 
     @objc func sendMessage(_ call: CAPPluginCall) {
         let type = call.getString("type") ?? "unknown"
-        let payload = call.getObject("payload")
+        let payload = call.getObject("payload") // [String: Any]?, JSON-friendly
         MessageBus.shared.publish(type: type, payload: payload)
         call.resolve(["ok": true])
     }
 }
-

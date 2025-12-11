@@ -5,7 +5,7 @@ Simple message bus for two-way communication between ts frontend and Swift backe
 ## Install
 
 ```bash
-npm install capacitor-message-bus
+npm install github:Connected-Dot/capacitor-message-bus#main
 npx cap sync
 ```
 

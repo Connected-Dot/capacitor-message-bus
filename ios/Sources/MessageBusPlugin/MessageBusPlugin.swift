@@ -51,7 +51,21 @@ public class MessageBusPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func sendMessage(_ call: CAPPluginCall) {
         let type = call.getString("type") ?? "unknown"
         let payload = call.getObject("payload")
+
+        // Publish to internal MessageBus (for JS listeners via globalSub)
         MessageBus.shared.publish(type: type, payload: payload)
+
+        // Also post to NotificationCenter so native code can listen
+        // This enables native modules like MediaPickers to receive JS messages
+        NotificationCenter.default.post(
+            name: .capMessageBusPublish,
+            object: nil,
+            userInfo: [
+                "type": type,
+                "payload": payload as Any
+            ]
+        )
+
         call.resolve(["ok": true])
     }
 }
